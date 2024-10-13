@@ -1,23 +1,22 @@
 /*
 	Hi, I'm Doug Hills
-	President, HillsBrother Consulting
 	Doug@HillsBrother.com
 
 	I've been working with database for twenty five years or so. One of the Silverbacks! I got started with Access and moved on to SQL Server.
-	For some reason, I really enjoy working with SQL Server. Over the years, I've developed a few tricks that help with
+	For some reason, I really enjoy working with SQL Server. Over the years, I've crafted a few tricks that help with
 	application performance, schema modeling, naming, code generation, whatever. I'd like to share these tricks with whoever might find
-	them beneficial. I wouldn't mind feedback and suggestions either. 
+	them beneficial. I wouldn't mind feedback / suggestions either. 
 
 	This script produces a script. The machine-generated script can be executed to modify the table of your choice 
-	by turning it into an UPDATE-ONLY-IF-CHANGED table. Obviously, the script could be modified to affect an 
+	turning it into an UPDATE-ONLY-IF-CHANGED table. Obviously, the script could be modified to affect an 
 	array of tables all at once. I don't really recommend that.
 
 	Chief benefits of making a table behave this way:
 		1)	Physical disk churn is reduced
-		2)	Fewer opportunities for indexes to become fragmented
-		3)	Fewer opportunities for table data pages to become fragmented
-		4)	This approach would be a good first step toward making a table behave like a slowly
+		2)	Fewer opportunities for index and data pages to become split/fragmented
+		3)	This approach would be a good first step toward making a table behave like a slowly
 			changing dimension. With time-machine capabilities!
+		4)	Extends SSD physical life
 
 	Costs of this approach
 		The method used by this approach is for a table to fire an INSTEAD OF trigger for crud opperations. 
@@ -26,40 +25,46 @@
 
 	Why is this worthwhile?
 		In every database that I've created, the datamart/warehouse-ish sorts of operations that keep rollups 
-		And materialized views fresh involve a lot of updates against rows in order to ensure a particular state.
-		Frequently, this state that we're trying to ensure is already set. So, our little routine that keeps these
+		And materialized views fresh involve a lot of updates against persisted rows in order to ensure a particular 
+		state. Frequently, this desired state was already the current state. So, our little routine that keeps these
 		objects fresh makes a lot of maneuvers that don't change anything (except for what's in the bare metal).
 
-		Scenario: I have 10,000,000 customers in my enterprise database. A new rule came out that says the 
-		state abbreviation for the customers' addresses absolutely must be persisted in upper-case. Occasionally
-		the values were entered in lower-case. The easiest way to handle this is to have your ETL process include
+		Scenario: I have 10,000,000 customers in my enterprise database. Oh no! A new rule came out! The 
+		state abbreviation for the customers' addresses absolutely must be persisted in upper-case. Right now, that's the norm
+		but it hasn't been enforced. The easiest way to handle this is to have your ETL process include
 		an UPDATE command that will change all of those state abbreviations. It is likely that the command will
-		look like this:
+		look a little like this:
 			UPDATE [customer] SET [state_abbrev] = UPPER([state_abbrev])
 
 		This is a very simple command and might be the most likely approach that a developer would take to make sure that 
 		the rows in the [customer] table follow the rule. However, everytime this command is executed, every row in the
 		table will be physically updated despite the fact that almost all of the rows require no change.
 
-		There is a cost associated with updating a row. In SQL Server, the new row is rendered, the old row is deleted, 
-		the new row is laid down. Every update is really a delete and an insert. When this happens, the row that is 
-		'updated' is really moved. Even if no change was made, the row is not where it was before the command was 
-		executed. There are unnecessary costs that come out of this:
+		Clearly, the command could be altered with a predicate that would limit the number of rows updated. That's 
+		not really the point of this scenario. Incidentally, what predicicate would identify the rows that are fine
+		as is? 
+
+		There is a cost associated with updating a row. Every update is a physical delete and a physical insert. When this 
+		happens, the row that is 'updated' is (essentially) physically moved. Even if no change was made, the row is not where it 
+		was before the command was executed. From this unnecessary churn, there are costs:
 
 			moving data inevitably causes index and data page splits. Over time, this leads to our data being fragmented
 			and slightly more expensive to access.
 
 			deleting and re-writing data for no real reason puts unnecessary wear on our SSDs. SSDs are so much 
 			faster than spinners that people sort of ignore the difference in cost between sequential reads and random 
-			access--this is fair. However, the little pits that the SSDs use for storing data have limited read/write cycle
-			counts. So, making it a practice of avoiding updating rows that have no change will make our SSDs last longer.
+			access--this is fair. Reduced fragmentation isn't as compelling as it was 20 years ago. However, the little dots 
+			that the SSDs use for storing data have finite read/write cycle counts. Making it a practice of avoiding updating 
+			rows that have no change will make our SSDs last longer.
+
+			and, obviously, it's faster to not move a row than to move it.
 
 		Analyzing the INSTEAD OF trigger created by this script shows how it works. Since most of the table refresh work that 
 		I've done in my ETL experiences involve MERGE operations, and since MERGE operations include inserts, updates, and deletes,
-		An INSTEAD OF trigger needs to be present for all of those operations. It would be nice if a merge invoked the INSTEAD OF
-		UPDATE only for updates and just behaved as normal for the inserts and deletes. But, if a table has an INSTEAD OF trigger
-		defined for any operation that occurs in a merge, the merge will fail unless the table also has an INSTEAD OF trigger 
-		for inserts and deletes.
+		An INSTEAD OF trigger needs to be present for all of those operations if you wish to have INSTEAD OF behaviors for any 
+		of them. It would be nice if a merge invoked the INSTEAD OF	UPDATE only for updates and just behaved as normal for the 
+		inserts and deletes. But, if a table has an INSTEAD OF trigger defined for *any* operation that occurs in a MERGE, the MERGE 
+		will fail unless the table also has an INSTEAD OF trigger for *all* operations.
 
 		The insert and delete portions of the INSTEAD OF trigger created below just make sure that inserts
 		and deletes occur exactly as before. 
@@ -102,6 +107,8 @@ GO
 CREATE OR ALTER TRIGGER {{trigger_name}} ON {{table_name}}
 INSTEAD OF UPDATE, INSERT, DELETE 
 AS
+	-- Doug@HillsBrother.com
+
 	UPDATE t
 	SET	{{set_columns}}
 	FROM {{table_name}} as t -- target
