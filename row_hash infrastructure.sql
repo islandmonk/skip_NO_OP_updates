@@ -1,14 +1,16 @@
 /*
 	Hi, I'm Doug Hills
+	President, HillsBrother Consulting
 	Doug@HillsBrother.com
 
-	I've been working with database for twenty five years now. One of the Silverbacks! I got started with Access and moved on to SQL Server.
-	For some reason, I like working with SQL Server. Over the years, I've developed a few tricks that help with
-	application performance, schema modeling, naming, whatever. I'd like to share these tricks with whoever might find
+	I've been working with database for twenty five years or so. One of the Silverbacks! I got started with Access and moved on to SQL Server.
+	For some reason, I really enjoy working with SQL Server. Over the years, I've developed a few tricks that help with
+	application performance, schema modeling, naming, code generation, whatever. I'd like to share these tricks with whoever might find
 	them beneficial. I wouldn't mind feedback and suggestions either. 
 
-	This script produces a script that can be executed to modify the table of your choice to make it an UPDATE-ONLY-IF-CHANGED
-	table. Obviously, the script could be modified to affect an array of tables all at once. I don't really recommend that.
+	This script produces a script. The machine-generated script can be executed to modify the table of your choice 
+	by turning it into an UPDATE-ONLY-IF-CHANGED table. Obviously, the script could be modified to affect an 
+	array of tables all at once. I don't really recommend that.
 
 	Chief benefits of making a table behave this way:
 		1)	Physical disk churn is reduced
@@ -18,15 +20,15 @@
 			changing dimension. With time-machine capabilities!
 
 	Costs of this approach
-		The method used by this approach is for a table to fire an instead of trigger for crud opperations. 
-		CRUD all behaves as expected except for UPDATES. For updates, if an update would leave a row unchanged,
-		the update against that row is not executed.
+		The method used by this approach is for a table to fire an INSTEAD OF trigger for crud opperations. 
+		The trigger makes it such that all CRUD all behaves as expected except for UPDATES. For updates, 
+		if an update would leave a row unchanged, the update against that row is not executed.
 
 	Why is this worthwhile?
 		In every database that I've created, the datamart/warehouse-ish sorts of operations that keep rollups 
 		And materialized views fresh involve a lot of updates against rows in order to ensure a particular state.
 		Frequently, this state that we're trying to ensure is already set. So, our little routine that keeps these
-		objects fresh make a lot of maneuvers that don't change anything.
+		objects fresh makes a lot of maneuvers that don't change anything (except for what's in the bare metal).
 
 		Scenario: I have 10,000,000 customers in my enterprise database. A new rule came out that says the 
 		state abbreviation for the customers' addresses absolutely must be persisted in upper-case. Occasionally
