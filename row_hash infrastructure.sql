@@ -1,10 +1,21 @@
 /*
+	Hi, I'm Doug Hills
+	Doug@HillsBrother.com
+
+	I've been working with database for twenty five years now. One of the Silverbacks! I got started with Access and moved on to SQL Server.
+	For some reason, I like working with SQL Server. Over the years, I've developed a few tricks that help with
+	application performance, schema modeling, naming, whatever. I'd like to share these tricks with whoever might find
+	them beneficial. I wouldn't mind feedback and suggestions either. 
+
 	This script produces a script that can be executed to modify the table of your choice to make it an UPDATE-ONLY-IF-CHANGED
-	table. 
+	table. Obviously, the script could be modified to affect an array of tables all at once. I don't really recommend that.
+
 	Chief benefits of making a table behave this way:
 		1)	Physical disk churn is reduced
 		2)	Fewer opportunities for indexes to become fragmented
 		3)	Fewer opportunities for table data pages to become fragmented
+		4)	This approach would be a good first step toward making a table behave like a slowly
+			changing dimension. With time-machine capabilities!
 
 	Costs of this approach
 		The method used by this approach is for a table to fire an instead of trigger for crud opperations. 
@@ -94,6 +105,7 @@ AS
 	FROM {{table_name}} as t -- target
 	INNER JOIN inserted as s -- source
 	{{join_predicate}}
+	-- rows where there is no difference between inserted and deleted are ignored
 	WHERE t.[row_hash] <> s.[row_hash] 
 
 	-- insert all rows that are in the inserted psuedotable
