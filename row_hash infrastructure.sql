@@ -109,7 +109,15 @@ GO
 CREATE OR ALTER TRIGGER {{trigger_name}} ON {{table_name}}
 INSTEAD OF UPDATE, INSERT, DELETE 
 AS
+	/*
 	-- Doug@HillsBrother.com
+
+	This is the definition of an INSTEAD OF trigger. Its initial purpose is to reduce churn on tables
+	mostly for the sake of performance. There is nothing stopping you from altering this trigger to
+	add other functionality. Keep in mind, also, that you can have AFTER UPDATE triggers on the same
+	table as one with an INSTEAD OF UPDATE trigger. So that is still available to you even if you
+	go with this approach.
+	*/
 
 	UPDATE t
 	SET	{{set_columns}}
@@ -173,7 +181,7 @@ FROM (
 		AND c.column_id = ic.column_id
 	)
 ) as x
-	ORDER BY [rn]
+ORDER BY [rn]
 
 SELECT @insert_columns +=
 	-- Any column that is not caclculated or otherwise automatically renderered (such as an identity column)
@@ -194,7 +202,7 @@ FROM (
 	AND c.is_computed = 0
 	AND c.is_identity = 0
 ) as x
-	ORDER BY [rn]
+ORDER BY [rn]
 
 -- join predicate needs to be based on pk 
 SELECT 
@@ -202,11 +210,6 @@ SELECT
 		CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
 		+ @tab 
 		+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
-
-	, @match_predicate +=
-		CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
-		+ @tab 
-		+ CASE WHEN ic.index_column_id = 1 THEN 'WHERE ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
 FROM sys.tables as t
 INNER JOIN sys.columns as c
 	ON t.[object_id] = c.[object_id]
@@ -220,7 +223,7 @@ INNER JOIN sys.index_columns as ic
 WHERE t.[object_id] = @table_object_id
 ORDER BY ic.index_column_id
 
-
+SELECT @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
 
 -- set all columns not included in PK 
 SELECT @set_columns +=
@@ -257,9 +260,10 @@ FROM (
 
 	-- Any columns that, as a matter of policy, are never to be 
 	-- included in the row_hash calc. 
+	-- Add/Remove to this list at your peril
 	AND c.[name] NOT IN ('created', 'modified')
 ) as x
-	ORDER BY [rn]
+ORDER BY [rn]
 
 
 SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @table_name)
