@@ -11,6 +11,8 @@
 	turning it into an UPDATE-ONLY-IF-CHANGED table. Obviously, the script could be modified to affect an 
 	array of tables all at once. I don't really recommend that.
 
+	Compound primary keys are fine. But running this against a table with no PK will generate mush.
+
 	Chief benefits of making a table behave this way:
 		1)	Physical disk churn is reduced
 		2)	Fewer opportunities for index and data pages to become split/fragmented
@@ -56,9 +58,9 @@
 
 			deleting and re-writing data for no real reason puts unnecessary wear on our SSDs. SSDs are so much 
 			faster than spinners that people sort of ignore the difference in cost between sequential reads and random 
-			access--this is fair. Reduced fragmentation isn't as compelling as it was 20 years ago. However, the little dots 
+			access. That's fair. Reduced fragmentation isn't as compelling as it was 20 years ago. However, the little dots 
 			that the SSDs use for storing data have finite read/write cycle counts. Making it a practice of avoiding updating 
-			rows that have no change will make our SSDs last longer.
+			rows that have no change will extend the reliability of our SSDs.
 
 			and, obviously, it's faster to not move a row than to move it.
 
