@@ -21,7 +21,8 @@
 	Costs of this approach
 		The method used by this approach is for a table to fire an INSTEAD OF trigger for crud opperations. 
 		The trigger makes it such that all CRUD all behaves as expected except for UPDATES. For updates, 
-		if an update would leave a row unchanged, the update against that row is not executed.
+		if an update would leave a row unchanged, the update against that row is not executed. Each row of
+		the table necessarily has some sort of hash/checksum rendered and persisted.
 
 	Why is this worthwhile?
 		In every database that I've created, the datamart/warehouse-ish sorts of operations that keep rollups 
@@ -34,6 +35,7 @@
 		but it hasn't been enforced. The easiest way to handle this is to have your ETL process include
 		an UPDATE command that will change all of those state abbreviations. It is likely that the command will
 		look a little like this:
+
 			UPDATE [customer] SET [state_abbrev] = UPPER([state_abbrev])
 
 		This is a very simple command and might be the most likely approach that a developer would take to make sure that 
@@ -41,7 +43,8 @@
 		table will be physically updated despite the fact that almost all of the rows require no change.
 
 		Clearly, the command could be altered with a predicate that would limit the number of rows updated. That's 
-		not really the point of this scenario. Incidentally, what predicicate would identify the rows that are fine
+		not really the point of this scenario--let's stay focused. But it *is* good to bring that up. Not all of the hands
+		touching our databases are as gentle as ours, yes? Incidentally, what predicicate would identify the rows that are fine
 		as is? 
 
 		There is a cost associated with updating a row. Every update is a physical delete and a physical insert. When this 
@@ -70,18 +73,17 @@
 		and deletes occur exactly as before. 
 */
 DECLARE 
-	  @table_name varchar(250) = '[flight_recorder].[event_rh]' -- any table name that you want here
-	, @table_object_id int
-	, @trigger_name varchar(250)
-	, @join_predicate varchar(250) = ''
-	, @d_join_predicate varchar(250) = '' -- join predicate against deleted psuedotable
-	, @i_d_match_predicate varchar(250) = '' -- inserted / deleted psuedotable match predicate
-	, @row_hash_columns varchar(max) = ''
-	, @set_columns varchar(max) = ''
-	, @insert_columns varchar(max) = ''
-	, @cmd varchar(max) 
-	, @cr char(2) = CHAR(13) + CHAR(10)
-	, @tab CHAR(1) = char(9)
+	  @table_name			varchar(250) = '[flight_recorder].[event_rh]' -- any table name that you want here
+	, @table_object_id		int
+	, @trigger_name			varchar(250)
+	, @match_predicate		varchar(250) = '' -- inserted / deleted psuedotable match predicate
+	, @join_predicate		varchar(250) = ''
+	, @row_hash_columns		varchar(max) = ''
+	, @set_columns			varchar(max) = ''
+	, @insert_columns		varchar(max) = ''
+	, @cmd					varchar(max) 
+	, @cr					char(2) = CHAR(13) + CHAR(10)
+	, @tab					CHAR(1) = char(9)
 
 SELECT @table_object_id = OBJECT_ID(@table_name)
 
@@ -111,11 +113,11 @@ AS
 
 	UPDATE t
 	SET	{{set_columns}}
-	FROM {{table_name}} as t -- target
-	INNER JOIN inserted as s -- source
+	FROM {{table_name}} as d -- deleted
+	INNER JOIN inserted as i 
 	{{join_predicate}}
 	-- rows where there is no difference between inserted and deleted are ignored
-	WHERE t.[row_hash] <> s.[row_hash] 
+	WHERE d.[row_hash] <> i.[row_hash] 
 
 	-- insert all rows that are in the inserted psuedotable
 	-- that don''t have corresponding rows in the deleted psuedotable
@@ -128,19 +130,19 @@ AS
 	WHERE NOT EXISTS (
 		SELECT TOP 1 1
 		FROM deleted as d
-	{{i_d_match_predicate}}	
+	{{match_predicate}}	
 	)
 
 	-- delete all rows that are in the deleted psuedotable
 	-- that don''t have corresponding rows in the inserted psuedotable
 	DELETE t 
-	FROM {{table_name}} as t
+	FROM {{table_name}} as i
 	INNER JOIN deleted as d
-	{{d_join_predicate}}
+	{{join_predicate}}
 	WHERE NOT EXISTS (
 		SELECT TOP 1 1
 		FROM inserted as i
-	{{i_d_match_predicate}}	
+	{{match_predicate}}	
 	)
 GO
 --------------'
@@ -199,12 +201,12 @@ SELECT
 	  @join_predicate +=
 		CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
 		+ @tab 
-		+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 't.[' + c.[name] + '] = s.[' + c.[name] + '] '
+		+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
 
-	, @i_d_match_predicate +=
+	, @match_predicate +=
 		CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
 		+ @tab 
-		+ CASE WHEN ic.index_column_id = 1 THEN 'WHERE ' ELSE 'AND ' END + 'i.[' + c.[name] + '] = d.[' + c.[name] + '] '
+		+ CASE WHEN ic.index_column_id = 1 THEN 'WHERE ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
 FROM sys.tables as t
 INNER JOIN sys.columns as c
 	ON t.[object_id] = c.[object_id]
@@ -218,13 +220,11 @@ INNER JOIN sys.index_columns as ic
 WHERE t.[object_id] = @table_object_id
 ORDER BY ic.index_column_id
 
-SELECT @d_join_predicate = REPLACE(@join_predicate, 's.[', 'd.[')
-
 
 
 -- set all columns not included in PK 
 SELECT @set_columns +=
-	@cr + @tab + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + '] = s.[' + [column_name] + ']'
+	@cr + @tab + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + '] = i.[' + [column_name] + ']'
 FROM (
 	SELECT 
 		  c.[name] as [column_name]
@@ -268,7 +268,6 @@ SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
 SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
 SELECT @cmd = REPLACE(@cmd, '{{set_columns}}'			, @set_columns)
 SELECT @cmd = REPLACE(@cmd, '{{join_predicate}}'		, @join_predicate)
-SELECT @cmd = REPLACE(@cmd, '{{d_join_predicate}}'		, @d_join_predicate)
-SELECT @cmd = REPLACE(@cmd, '{{i_d_match_predicate}}'	, @i_d_match_predicate)
+SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
 
 PRINT @cmd
