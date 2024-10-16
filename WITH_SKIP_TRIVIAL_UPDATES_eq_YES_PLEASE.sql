@@ -8,7 +8,7 @@
 		, message nvarchar(max) NOT NULL
 		, modified datetime NULL
 	)
-	WITH (UPDATE_ONLY_CHANGES = ON)
+	WITH (SKIP_TRIVIAL_UPDATES = ON)
 
 
 	I don't think that this scenario takes too much explanation. The internet is repleat
