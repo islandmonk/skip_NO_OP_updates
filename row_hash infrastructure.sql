@@ -75,11 +75,12 @@
 		and deletes occur exactly as before. 
 */
 DECLARE 
-	  @table_name			varchar(250) = '[flight_recorder].[event_rh]' -- any table name that you want here
+	  @table_name			varchar(250) = '[dbo].[tbl_burp]' -- any table name that you want here
 	, @table_object_id		int
 	, @trigger_name			varchar(250)
 	, @match_predicate		varchar(250) = '' -- inserted / deleted psuedotable match predicate
 	, @join_predicate		varchar(250) = ''
+	, @join_predicate_d		varchar(250) = ''
 	, @row_hash_columns		varchar(max) = ''
 	, @set_columns			varchar(max) = ''
 	, @insert_columns		varchar(max) = ''
@@ -121,7 +122,7 @@ AS
 	go with this approach.
 	*/
 
-	UPDATE t
+	UPDATE d
 	SET	{{set_columns}}
 	FROM {{table_name}} as d -- deleted
 	INNER JOIN inserted as i 
@@ -146,9 +147,9 @@ AS
 	-- delete all rows that are in the deleted psuedotable
 	-- that don''t have corresponding rows in the inserted psuedotable
 	DELETE t 
-	FROM {{table_name}} as i
+	FROM {{table_name}} as t -- target 
 	INNER JOIN deleted as d
-	{{join_predicate}}
+	{{join_predicate_d}}
 	WHERE NOT EXISTS (
 		SELECT TOP 1 1
 		FROM inserted as i
@@ -225,7 +226,9 @@ INNER JOIN sys.index_columns as ic
 WHERE t.[object_id] = @table_object_id
 ORDER BY ic.index_column_id
 
-SELECT @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
+SELECT 
+	  @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
+	, @join_predicate_d = REPLACE(@join_predicate, 'ON i.[', 'ON t.[')
 
 -- set all columns not included in PK 
 SELECT @set_columns +=
@@ -274,6 +277,7 @@ SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
 SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
 SELECT @cmd = REPLACE(@cmd, '{{set_columns}}'			, @set_columns)
 SELECT @cmd = REPLACE(@cmd, '{{join_predicate}}'		, @join_predicate)
+SELECT @cmd = REPLACE(@cmd, '{{join_predicate_d}}'		, @join_predicate_d)
 SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
 
 PRINT @cmd
