@@ -73,6 +73,9 @@
 
 		The insert and delete portions of the INSTEAD OF trigger created below just make sure that inserts
 		and deletes occur exactly as before. 
+
+		Paul White's article on redundant updates:
+		https://www.sql.kiwi/2010/08/the-impact-of-non-updating-updates.html?m=1
 */
 DECLARE 
 	  @table_name			varchar(250) = '[dbo].[tbl_burp]' -- any table name that you want here
