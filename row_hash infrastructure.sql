@@ -101,7 +101,7 @@ BEGIN
 	PRINT @message
 END 
 
-IF NOT EXISTS (
+ELSE IF NOT EXISTS (
 	SELECT TOP 1 1
 	FROM sys.indexes as i
 	WHERE [object_id] = @table_object_id
@@ -155,7 +155,7 @@ AS
 	-- rows where there is no difference between inserted and deleted are ignored
 	WHERE d.[row_hash] <> i.[row_hash] 
 
-	-- Inserts and deletes procede as usual
+	-- Inserts proceed as usual
 
 	INSERT {{table_name}} (
 {{insert_columns}}
@@ -169,8 +169,8 @@ AS
 	{{match_predicate}}	
 	)
 
-	-- delete all rows that are in the deleted psuedotable
-	-- that don''t have corresponding rows in the inserted psuedotable
+	-- Deletes proceed  as usual
+
 	DELETE t 
 	FROM {{table_name}} as t -- target 
 	INNER JOIN deleted as d
