@@ -78,7 +78,8 @@
 		https://www.sql.kiwi/2010/08/the-impact-of-non-updating-updates.html?m=1
 */
 DECLARE 
-	  @table_name			varchar(250) = '[dbo].[tbl_burp]' -- any table name that you want here
+	  @table_name			varchar(250) = '[dbo].[note]' -- any table name that you want here
+	, @two_part_table_name	varchar(250)
 	, @table_object_id		int
 	, @trigger_name			varchar(250)
 	, @match_predicate		varchar(250) = '' -- inserted / deleted psuedotable match predicate
@@ -90,22 +91,43 @@ DECLARE
 	, @cmd					varchar(max) 
 	, @cr					char(2) = CHAR(13) + CHAR(10)
 	, @tab					CHAR(1) = char(9)
+	, @message				varchar(250)
 
 SELECT @table_object_id = OBJECT_ID(@table_name)
 
-SELECT @trigger_name = SCHEMA_NAME(t.schema_id) + '_' + t.[name] + '__instead_of_IUD'
-FROM sys.tables as t
-WHERE t.[object_id] = @table_object_id
+IF @table_object_id IS NULL
+BEGIN
+	SELECT @message = 'I''m Sorry Dave. I don''t think that that table ' + @table_name + ' exists.'
+	PRINT @message
+END 
 
--- We'll construct a command that we can execute to make the necessary modifications to the 
--- table to make it manage it's own updates.
--- Chunks of TSQL are generated independetly because that is the easiest way I could think of
--- for doing it. The chuncks are slid into the @cmd variable with text replacement. This gives
--- @cmd its desired value before we execute.
-SELECT 
-	  @table_object_id = OBJECT_ID(@table_name)
-	, @cmd = '
+IF NOT EXISTS (
+	SELECT TOP 1 1
+	FROM sys.indexes as i
+	WHERE [object_id] = @table_object_id
+	AND i.is_primary_key = 1
+)
+BEGIN
+	SELECT @message = 'I''m Sorry Dave. I don''t think that that table ' + @table_name + ' has a primary key. We really need one.'
+	PRINT @message
+END
+
+ELSE 
+BEGIN
+	SELECT 
+		  @two_part_table_name = '[' + SCHEMA_NAME(t.[schema_id]) + '].[' + t.[name] + ']'
+		, @trigger_name = SCHEMA_NAME(t.schema_id) + '_' + t.[name] + '__instead_of_IUD'
+	FROM sys.tables as t
+	WHERE [object_id] = @table_object_id
+
+	-- Construct a command that we can execute to make the necessary modifications to the 
+	-- table to make it ignore redundant updates.
+
+	SELECT 
+		  @table_object_id = OBJECT_ID(@table_name)
+		, @cmd = '
 -- Add row_hash column to table {{table_name}}
+--
 ALTER TABLE {{table_name}} ADD row_hash as HASHBYTES(''sha2_512'', CONCAT({{row_hash_columns}})
 ) PERSISTED; 
 GO
@@ -161,126 +183,224 @@ AS
 GO
 --------------'
 
-SELECT @row_hash_columns +=
-	@cr + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
-	-- columns should only be added to the row hash if they are non-rtirivial and non-derived.
-	-- Adding a calculated column to this row_hash calc would be a mistake.
-FROM (
+	SELECT @row_hash_columns +=
+		@cr + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
+		-- columns should only be added to the row hash if they are non-rtirivial and non-derived.
+		-- Adding a calculated column to this row_hash calc would be a mistake.
+	FROM (
+		SELECT 
+			  c.[name] as [column_name]
+			, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
+		FROM sys.schemas as s
+		INNER JOIN sys.tables as t
+			ON s.[schema_id] = t.[schema_id]
+		INNER JOIN sys.columns as c
+			ON t.[object_id] = c.[object_id]
+		WHERE t.[object_id] = @table_object_id
+		AND c.is_computed = 0
+		AND NOT EXISTS (
+			SELECT TOP 1 1 as is_part_of_pk
+			FROM sys.indexes as i
+			INNER JOIN sys.index_columns as ic
+				ON i.[object_id] = ic.[object_id]
+				AND i.[index_id] = ic.[index_id]
+			WHERE i.is_primary_key = 1
+			AND t.[object_id] = i.[object_id]
+			AND c.column_id = ic.column_id
+		)
+	) as x
+	ORDER BY [rn]
+
+	SELECT @insert_columns +=
+		-- Any column that is not caclculated or otherwise automatically renderered (such as an identity column)
+		-- should be included in the insert
+		CASE rn WHEN 1 THEN ' ' ELSE @cr END 
+		+ @tab + @tab 
+		+ CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
+	FROM (
+		SELECT 
+			  c.[name] as [column_name]
+			, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
+		FROM sys.schemas as s
+		INNER JOIN sys.tables as t
+			ON s.[schema_id] = t.[schema_id]
+		INNER JOIN sys.columns as c
+			ON t.[object_id] = c.[object_id]
+		WHERE t.[object_id] = @table_object_id
+		AND c.is_computed = 0
+		AND c.is_identity = 0
+	) as x
+	ORDER BY [rn]
+
+	-- join predicate needs to be based on pk 
 	SELECT 
-		  c.[name] as [column_name]
-		, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
-	FROM sys.schemas as s
-	INNER JOIN sys.tables as t
-		ON s.[schema_id] = t.[schema_id]
+		  @join_predicate +=
+			CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
+			+ @tab 
+			+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
+	FROM sys.tables as t
 	INNER JOIN sys.columns as c
 		ON t.[object_id] = c.[object_id]
+	INNER JOIN sys.indexes as i
+		ON t.[object_id] = i.[object_id]
+		AND i.is_primary_key = 1
+	INNER JOIN sys.index_columns as ic
+		ON t.[object_id] = ic.[object_id]
+		AND i.[index_id] = ic.[index_id]
+		AND c.[column_id] = ic.[column_id]
 	WHERE t.[object_id] = @table_object_id
-	AND c.is_computed = 0
-	AND NOT EXISTS (
-		SELECT TOP 1 1 as is_part_of_pk
-		FROM sys.indexes as i
-		INNER JOIN sys.index_columns as ic
-			ON i.[object_id] = ic.[object_id]
-			AND i.[index_id] = ic.[index_id]
-		WHERE i.is_primary_key = 1
-		AND t.[object_id] = i.[object_id]
-		AND c.column_id = ic.column_id
+	ORDER BY ic.index_column_id
+
+	SELECT 
+		  @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
+		, @join_predicate_d = REPLACE(@join_predicate, 'ON i.[', 'ON t.[')
+
+	-- set all columns not included in PK 
+	SELECT @set_columns +=
+		@cr + @tab + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + '] = i.[' + [column_name] + ']'
+	FROM (
+		SELECT 
+			  c.[name] as [column_name]
+			, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
+		FROM sys.schemas as s
+		INNER JOIN sys.tables as t
+			ON s.[schema_id] = t.[schema_id]
+		INNER JOIN sys.columns as c
+			ON t.[object_id] = c.[object_id]
+		WHERE t.[object_id] = @table_object_id
+
+		-- computed columns can't be updated. They should NOT be included
+		-- in the row_hash calc
+		AND c.is_computed = 0
+
+		-- PK columns should not be included in the row_hash calc. They won't hurt
+		-- anything. Leave them out none-the-less. Adding them contributes nothing
+		-- while making the row_hash marginally more expensive to render.
+		AND NOT EXISTS (
+			SELECT TOP 1 1 as is_part_of_pk
+			FROM sys.indexes as i
+			INNER JOIN sys.index_columns as ic
+				ON i.[object_id] = ic.[object_id]
+				AND i.[index_id] = ic.[index_id]
+			WHERE i.is_primary_key = 1
+			AND t.[object_id] = i.[object_id]
+			AND c.column_id = ic.column_id
+		)
+
+		-- Any columns that, as a matter of policy, are never to be 
+		-- included in the row_hash calc. 
+		-- Add/Remove to this list at your peril
+		AND c.[name] NOT IN ('created', 'modified')
+	) as x
+	ORDER BY [rn]
+
+
+	SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @table_name)
+	SELECT @cmd = REPLACE(@cmd, '{{row_hash_columns}}'		, @row_hash_columns)
+	SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
+	SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
+	SELECT @cmd = REPLACE(@cmd, '{{set_columns}}'			, @set_columns)
+	SELECT @cmd = REPLACE(@cmd, '{{join_predicate}}'		, @join_predicate)
+	SELECT @cmd = REPLACE(@cmd, '{{join_predicate_d}}'		, @join_predicate_d)
+	SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
+
+	PRINT @cmd
+END
+
+
+/*
+-- setting the table_name parameter and running this script will produce a script that will
+-- alter your table in the way described. Here is a sample of the result of running this script 
+-- against a table with this design:
+	CREATE TABLE [dbo].[note](
+		  [note_id] [int] IDENTITY(1,1) NOT NULL PRIMARY KEY 
+		, [object_id] [int] NULL 
+		, [column_id] [int] NULL 
+		, [parent_note_id] [int] NULL 
+		, [note_type_id] [int] NULL 
+		, [note] [nvarchar](max) NULL 
+		, [created] [datetime] NOT NULL default(getdate())
+	)  
+
+*/
+
+-- Add row_hash column to table [dbo].[note]
+--
+ALTER TABLE [dbo].[note] ADD row_hash as HASHBYTES('sha2_512', CONCAT(
+	  [object_id]
+	, [column_id]
+	, [parent_note_id]
+	, [note_type_id]
+	, [note]
+	, [created])
+) PERSISTED; 
+GO
+
+--------
+-- INSTEAD OF UPDATE trigger for [dbo].[note]
+CREATE OR ALTER TRIGGER dbo_note__instead_of_IUD ON [dbo].[note]
+INSTEAD OF UPDATE, INSERT, DELETE 
+AS
+	/*
+	-- Doug@HillsBrother.com
+
+	This is the definition of an INSTEAD OF trigger. Its initial purpose is to reduce churn on tables
+	mostly for the sake of performance. There is nothing stopping you from altering this trigger to
+	add other functionality. Keep in mind, also, that you can have AFTER UPDATE triggers on the same
+	table as one with an INSTEAD OF UPDATE trigger. So that is still available to you even if you
+	go with this approach.
+	*/
+
+	UPDATE d
+	SET	
+		  [object_id] = i.[object_id]
+		, [column_id] = i.[column_id]
+		, [parent_note_id] = i.[parent_note_id]
+		, [note_type_id] = i.[note_type_id]
+		, [note] = i.[note]
+	FROM [dbo].[note] as d -- deleted
+	INNER JOIN inserted as i 
+		ON d.[note_id] = i.[note_id] 
+
+	-- rows where there is no difference between inserted and deleted are redundant and ignored
+	WHERE d.[row_hash] <> i.[row_hash] 
+
+	-- Inserts and deletes need to procede as usual
+
+	INSERT [dbo].[note] (
+ 		  [object_id]
+		, [column_id]
+		, [parent_note_id]
+		, [note_type_id]
+		, [note]
+		, [created]
 	)
-) as x
-ORDER BY [rn]
-
-SELECT @insert_columns +=
-	-- Any column that is not caclculated or otherwise automatically renderered (such as an identity column)
-	-- should be included in the insert
-	CASE rn WHEN 1 THEN ' ' ELSE @cr END 
-	+ @tab + @tab 
-	+ CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
-FROM (
 	SELECT 
-		  c.[name] as [column_name]
-		, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
-	FROM sys.schemas as s
-	INNER JOIN sys.tables as t
-		ON s.[schema_id] = t.[schema_id]
-	INNER JOIN sys.columns as c
-		ON t.[object_id] = c.[object_id]
-	WHERE t.[object_id] = @table_object_id
-	AND c.is_computed = 0
-	AND c.is_identity = 0
-) as x
-ORDER BY [rn]
-
--- join predicate needs to be based on pk 
-SELECT 
-	  @join_predicate +=
-		CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
-		+ @tab 
-		+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
-FROM sys.tables as t
-INNER JOIN sys.columns as c
-	ON t.[object_id] = c.[object_id]
-INNER JOIN sys.indexes as i
-	ON t.[object_id] = i.[object_id]
-	AND i.is_primary_key = 1
-INNER JOIN sys.index_columns as ic
-	ON t.[object_id] = ic.[object_id]
-	AND i.[index_id] = ic.[index_id]
-	AND c.[column_id] = ic.[column_id]
-WHERE t.[object_id] = @table_object_id
-ORDER BY ic.index_column_id
-
-SELECT 
-	  @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
-	, @join_predicate_d = REPLACE(@join_predicate, 'ON i.[', 'ON t.[')
-
--- set all columns not included in PK 
-SELECT @set_columns +=
-	@cr + @tab + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + '] = i.[' + [column_name] + ']'
-FROM (
-	SELECT 
-		  c.[name] as [column_name]
-		, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
-	FROM sys.schemas as s
-	INNER JOIN sys.tables as t
-		ON s.[schema_id] = t.[schema_id]
-	INNER JOIN sys.columns as c
-		ON t.[object_id] = c.[object_id]
-	WHERE t.[object_id] = @table_object_id
-
-	-- computed columns can't be updated. They should NOT be included
-	-- in the row_hash calc
-	AND c.is_computed = 0
-
-	-- PK columns should not be included in the row_hash calc
-	-- for academic reasons
-	-- They could be added with no harm. Adding them contributes nothing and makes
-	-- the row_hash rendering marginally more expensive
-	AND NOT EXISTS (
-		SELECT TOP 1 1 as is_part_of_pk
-		FROM sys.indexes as i
-		INNER JOIN sys.index_columns as ic
-			ON i.[object_id] = ic.[object_id]
-			AND i.[index_id] = ic.[index_id]
-		WHERE i.is_primary_key = 1
-		AND t.[object_id] = i.[object_id]
-		AND c.column_id = ic.column_id
+ 		  [object_id]
+		, [column_id]
+		, [parent_note_id]
+		, [note_type_id]
+		, [note]
+		, [created]
+	FROM inserted as i
+	WHERE NOT EXISTS (
+		SELECT TOP 1 1
+		FROM deleted as d
+		WHERE d.[note_id] = i.[note_id] 	
 	)
 
-	-- Any columns that, as a matter of policy, are never to be 
-	-- included in the row_hash calc. 
-	-- Add/Remove to this list at your peril
-	AND c.[name] NOT IN ('created', 'modified')
-) as x
-ORDER BY [rn]
+	-- delete all rows that are in the deleted psuedotable
+	-- that don't have corresponding rows in the inserted psuedotable
+	DELETE t 
+	FROM [dbo].[note] as t -- target 
+	INNER JOIN deleted as d
+		ON d.[note_id] = i.[note_id] 
+	WHERE NOT EXISTS (
+		SELECT TOP 1 1
+		FROM inserted as i
+		WHERE d.[note_id] = i.[note_id] 	
+	)
+GO
+--------------
 
 
-SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @table_name)
-SELECT @cmd = REPLACE(@cmd, '{{row_hash_columns}}'		, @row_hash_columns)
-SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
-SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
-SELECT @cmd = REPLACE(@cmd, '{{set_columns}}'			, @set_columns)
-SELECT @cmd = REPLACE(@cmd, '{{join_predicate}}'		, @join_predicate)
-SELECT @cmd = REPLACE(@cmd, '{{join_predicate_d}}'		, @join_predicate_d)
-SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
-
-PRINT @cmd
