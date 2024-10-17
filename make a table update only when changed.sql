@@ -16,10 +16,7 @@ use this also to store row versions!!!!!
 These are notes. I don't expect 
 
 */
-ALTER TABLE [application].[session_ping] add modified datetime
-UPDATE [application].[session_ping] SET modified = created  -- this also needed the same default value as created
-ALTER TABLE [application].[session_ping] ALTER COLUMN modified datetime not null
-ALTER TABLE [application].[session_ping] -- this would be really cool!!!! But it isn't allowed
+ALTER TABLE [application].[session_ping]
 ADD row_hash AS (
 	SELECT 
 		  [session_id]
@@ -69,7 +66,7 @@ GO
 
 
 UPDATE [application].[session_ping]
-SET latitude = latitude
+SET latitude = latitude + 0
 
 select * 
 from [application].[session_ping]
