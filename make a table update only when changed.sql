@@ -152,22 +152,28 @@ CREATE OR ALTER TRIGGER triu_big_list__instead_of_update
 ON [dbo].[big_list_rh]
 INSTEAD OF UPDATE
 AS
-	DECLARE @dummy int;
+	-- set this variable to 1 (one) if you want to demonstrate
+	-- what happens in a table with an INSTEAD OF UPDATE trigger
+	-- that does no real updating
+	DECLARE @yes_make_this_trigger_completely_sidestep_the_operation int = 0;
 
-	--UPDATE t 
-	--SET
-	--	-- EVERY column in the row_hash calc must be here!!
-	--	  [location_id]		= s.[location_id]			
-	--	, [control_id]		= s.[control_id]
-	--	, [value]			= s.[value]
-	--	, [text]			= s.[text]
-	--	-- plus anything else you want
-	--	, [modified]		= getutcdate()
-	--FROM [dbo].[big_list_rh] as t
-	--INNER JOIN inserted as s
-	--	ON t.location_id = s.location_id
-	--	AND t.control_id = s.control_id
-	--WHERE t.row_hash <> s.row_hash  -- this is the secret sauce right here!!!!!!!
+	IF @yes_make_this_trigger_completely_sidestep_the_operation <> 1 
+	BEGIN
+		UPDATE t 
+		SET
+			-- EVERY column in the row_hash calc must be here!!
+			  [location_id]		= s.[location_id]			
+			, [control_id]		= s.[control_id]
+			, [value]			= s.[value]
+			, [text]			= s.[text]
+			-- plus anything else you want
+			, [modified]		= getutcdate()
+		FROM [dbo].[big_list_rh] as t
+		INNER JOIN inserted as s
+			ON t.location_id = s.location_id
+			AND t.control_id = s.control_id
+		WHERE t.row_hash <> s.row_hash  -- this is the secret sauce right here, baby!!!!!!!
+	END
 GO
 
 
