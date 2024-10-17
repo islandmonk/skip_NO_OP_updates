@@ -78,7 +78,7 @@
 		https://www.sql.kiwi/2010/08/the-impact-of-non-updating-updates.html?m=1
 */
 DECLARE 
-	  @table_name			varchar(250) = '[dbo].[note]' -- any table name that you want here
+	  @table_name			varchar(250) = 'database' -- any table name that you want here
 	, @two_part_table_name	varchar(250)
 	, @table_object_id		int
 	, @trigger_name			varchar(250)
@@ -155,8 +155,8 @@ AS
 	-- rows where there is no difference between inserted and deleted are ignored
 	WHERE d.[row_hash] <> i.[row_hash] 
 
-	-- insert all rows that are in the inserted psuedotable
-	-- that don''t have corresponding rows in the deleted psuedotable
+	-- Inserts and deletes procede as usual
+
 	INSERT {{table_name}} (
 {{insert_columns}}
 	)
@@ -295,7 +295,7 @@ GO
 	ORDER BY [rn]
 
 
-	SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @table_name)
+	SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @two_part_table_name)
 	SELECT @cmd = REPLACE(@cmd, '{{row_hash_columns}}'		, @row_hash_columns)
 	SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
 	SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
@@ -317,7 +317,6 @@ END
 		, [object_id] [int] NULL 
 		, [column_id] [int] NULL 
 		, [parent_note_id] [int] NULL 
-		, [note_type_id] [int] NULL 
 		, [note] [nvarchar](max) NULL 
 		, [created] [datetime] NOT NULL default(getdate())
 	)  
@@ -330,7 +329,6 @@ ALTER TABLE [dbo].[note] ADD row_hash as HASHBYTES('sha2_512', CONCAT(
 	  [object_id]
 	, [column_id]
 	, [parent_note_id]
-	, [note_type_id]
 	, [note]
 	, [created])
 ) PERSISTED; 
@@ -346,7 +344,7 @@ AS
 
 	This is the definition of an INSTEAD OF trigger. Its initial purpose is to reduce churn on tables
 	mostly for the sake of performance. There is nothing stopping you from altering this trigger to
-	add other functionality. Keep in mind, also, that you can have AFTER UPDATE triggers on the same
+	add other functionality. Keep in mind, you are allowed to have AFTER UPDATE triggers on the same
 	table as one with an INSTEAD OF UPDATE trigger. So that is still available to you even if you
 	go with this approach.
 	*/
@@ -356,7 +354,6 @@ AS
 		  [object_id] = i.[object_id]
 		, [column_id] = i.[column_id]
 		, [parent_note_id] = i.[parent_note_id]
-		, [note_type_id] = i.[note_type_id]
 		, [note] = i.[note]
 	FROM [dbo].[note] as d -- deleted
 	INNER JOIN inserted as i 
@@ -365,13 +362,12 @@ AS
 	-- rows where there is no difference between inserted and deleted are redundant and ignored
 	WHERE d.[row_hash] <> i.[row_hash] 
 
-	-- Inserts and deletes need to procede as usual
 
+	-- Inserts procede as usual
 	INSERT [dbo].[note] (
  		  [object_id]
 		, [column_id]
 		, [parent_note_id]
-		, [note_type_id]
 		, [note]
 		, [created]
 	)
@@ -379,7 +375,6 @@ AS
  		  [object_id]
 		, [column_id]
 		, [parent_note_id]
-		, [note_type_id]
 		, [note]
 		, [created]
 	FROM inserted as i
@@ -389,8 +384,7 @@ AS
 		WHERE d.[note_id] = i.[note_id] 	
 	)
 
-	-- delete all rows that are in the deleted psuedotable
-	-- that don't have corresponding rows in the inserted psuedotable
+	-- deletes procede as usual
 	DELETE t 
 	FROM [dbo].[note] as t -- target 
 	INNER JOIN deleted as d
