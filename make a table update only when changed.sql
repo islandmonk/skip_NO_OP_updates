@@ -13,28 +13,9 @@ an INSTEAD OF UPDATE trigger
 
 use this also to store row versions!!!!!
 
+These are notes. I don't expect 
+
 */
-
-SELECT  
-	  [id]
-	, [session_id]
-	, [location_id]
-	, [latitude]
-	, [longitude]
-	, [altitude]
-	, [created]
-	, (
-		SELECT 
-			  [session_id]
-			, [location_id]
-			, [latitude]
-			, [longitude]
-			, [altitude]
-		FOR JSON PATH, WITHOUT_ARRAY_WRAPPER
-	) as row_hash
-FROM [deficiencies_dev].[application].[session_ping]
-
-
 ALTER TABLE [application].[session_ping] add modified datetime
 UPDATE [application].[session_ping] SET modified = created  -- this also needed the same default value as created
 ALTER TABLE [application].[session_ping] ALTER COLUMN modified datetime not null
@@ -187,16 +168,10 @@ SET [value] = '0'
 WHERE location_id = 274720
 AND control_id = 147
 
-SELECT 
 
 
-
--- 0xAFCD86B2CA8F9D1471BDDBC4E0075A4E482D2FEDAFDFC88A9BB6D3E9315B42AB5090978D344EED83B828A360A06233FE425FC6889B8E287EDDD5C11908FAE8A0
--- 0x95B9663898FA89B74CD3EC28DD0091C83C515CB801BC217D0A3ED4A4332841402B5923E62CEE59EE0DCCDB8E1D34890E4153B2A4CBB31CA68AC5D906E16727C3
-
-
-set statistics io on
-set statistics time on
+-- set statistics io on
+-- set statistics time on
 
 -- populate them
 
@@ -240,8 +215,9 @@ FROM slab.location_checklist_control
 
 select top 10000 * from [dbo].[big_list_rh]
 
-update [dbo].[big_list] SET control_id = control_id
+-- Examples of 
+update [dbo].[big_list] SET control_id = control_id + 0
 
-update [dbo].[big_list_rh] SET control_id = control_id
+update [dbo].[big_list_rh] SET control_id = control_id + 0
 
 
