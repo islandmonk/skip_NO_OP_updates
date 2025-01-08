@@ -8,8 +8,10 @@
 		, [message]			nvarchar(max) NOT NULL
 		, [modified]		datetime NULL
 	)
-	WITH (SKIP_TRIVIAL_UPDATES = ON)
+	WITH (SKIP_NO_OP_UPDATES = ON)
 
+	A 'NO OP update' is an update that doens't change any values in a row as the row was
+	already in the desired state prior to calling the update command.
 
 	I don't think that this scenario takes too much explanation. The internet is repleat
 	with a few who are familiar with optimizing. We all have found ways to limit updates
@@ -72,13 +74,13 @@
 
 	Having a table behave this way opens up interesting prospects with row_versioning and junk
 	like that. If I can gaurantee that a row will only physically update if the update is
-	non-trivial, then the AFTER UPDATE trigger means an awful lot more!!! This makes it so much
-	easier to turn tables into time machines.
+	non-trivial (something will actually change), then the AFTER UPDATE trigger means an awful lot 
+	more!!! This makes it so much easier to turn tables into time machines.
 
 	What follows will be the setup for turning the above table into a time machine. Let's keep in mind
 	that in the above table, the only non meta-data data column is the [message] column. 
 
-	To avoid trivial update churn on the above table, we'll have an INSTEAD OF trigger for the table.
+	To avoid NO OP update churn on the above table, we'll have an INSTEAD OF trigger for the table.
 	I create that trigger by using my row_hash_infrastructure.sql script
 
 
