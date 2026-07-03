@@ -23,7 +23,7 @@
 	Costs of this approach
 		The method used by this approach is for a table to fire an INSTEAD OF trigger for crud opperations. 
 		The trigger makes it such that all CRUD all behaves as expected except for UPDATES. For updates, 
-		if an update would leave a row unchanged, the update against that row is not executed. Each row of
+		if an update were to leave a row unchanged, it is simply skipped. Each row of
 		the table necessarily has some sort of hash/checksum rendered and persisted.
 
 	Why is this worthwhile?
