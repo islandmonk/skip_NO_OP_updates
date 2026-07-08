@@ -122,18 +122,18 @@ BEGIN
 	RETURN
 END
 
-	SELECT 
-		  @two_part_table_name = '[' + SCHEMA_NAME(t.[schema_id]) + '].[' + t.[name] + ']'
-		, @trigger_name = SCHEMA_NAME(t.schema_id) + '_' + t.[name] + '__instead_of_IUD'
-	FROM sys.tables as t
-	WHERE [object_id] = @table_object_id
+SELECT 
+	  @two_part_table_name = '[' + SCHEMA_NAME(t.[schema_id]) + '].[' + t.[name] + ']'
+	, @trigger_name = SCHEMA_NAME(t.schema_id) + '_' + t.[name] + '__instead_of_IUD'
+FROM sys.tables as t
+WHERE [object_id] = @table_object_id
 
-	-- Construct a command that we can execute to make the necessary modifications to the 
-	-- table to make it ignore redundant updates.
+-- Construct a command that we can execute to make the necessary modifications to the 
+-- table to make it ignore redundant updates.
 
-	SELECT 
-		  @table_object_id = OBJECT_ID(@table_name)
-		, @cmd = '
+SELECT 
+	  @table_object_id = OBJECT_ID(@table_name)
+	, @cmd = '
 --------
 -- INSTEAD OF UPDATE trigger for {{table_name}}
 CREATE OR ALTER TRIGGER {{trigger_name}} ON {{table_name}}
@@ -185,131 +185,131 @@ AS
 GO
 --------------'
 
-	SELECT @is_changed_predicate +=
-		@cr + @tab + CASE rn WHEN 1 THEN 'WHERE ' ELSE 'OR ' END + 'i.[' + [column_name] + '] IS DISTINCT FROM d.[' + [column_name] + '] '
-		-- columns should only be added to the predicate if they are non-trivial and non-derived.
-		-- Adding a calculated column to this predicate calc would be a mistake.
-	FROM (
-		SELECT 
-			  c.[name] as [column_name]
-			, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
-		FROM sys.schemas as s
-		INNER JOIN sys.tables as t
-			ON s.[schema_id] = t.[schema_id]
-		INNER JOIN sys.columns as c
-			ON t.[object_id] = c.[object_id]
-		WHERE t.[object_id] = @table_object_id
-		AND c.is_computed = 0
-		AND NOT EXISTS (
-			SELECT TOP 1 1 as is_part_of_pk
-			FROM sys.indexes as i
-			INNER JOIN sys.index_columns as ic
-				ON i.[object_id] = ic.[object_id]
-				AND i.[index_id] = ic.[index_id]
-			WHERE i.is_primary_key = 1
-			AND t.[object_id] = i.[object_id]
-			AND c.column_id = ic.column_id
-		)
-	) as x
-	ORDER BY [rn]
-
-	SELECT @insert_columns +=
-		-- Any column that is not caclculated or otherwise automatically renderered (such as an identity column)
-		-- should be included in the insert
-		CASE rn WHEN 1 THEN ' ' ELSE @cr END 
-		+ @tab + @tab 
-		+ CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
-	FROM (
-		SELECT 
-			  c.[name] as [column_name]
-			, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
-		FROM sys.schemas as s
-		INNER JOIN sys.tables as t
-			ON s.[schema_id] = t.[schema_id]
-		INNER JOIN sys.columns as c
-			ON t.[object_id] = c.[object_id]
-		WHERE t.[object_id] = @table_object_id
-		AND c.is_computed = 0
-		AND c.is_identity = 0
-	) as x
-	ORDER BY [rn]
-
-	-- join predicate needs to be based on pk 
+SELECT @is_changed_predicate +=
+	@cr + @tab + CASE rn WHEN 1 THEN 'WHERE ' ELSE 'OR ' END + 'i.[' + [column_name] + '] IS DISTINCT FROM d.[' + [column_name] + '] '
+	-- columns should only be added to the predicate if they are non-trivial and non-derived.
+	-- Adding a calculated column to this predicate calc would be a mistake.
+FROM (
 	SELECT 
-		  @join_predicate +=
-			CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
-			+ @tab 
-			+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
-	FROM sys.tables as t
+		  c.[name] as [column_name]
+		, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
+	FROM sys.schemas as s
+	INNER JOIN sys.tables as t
+		ON s.[schema_id] = t.[schema_id]
 	INNER JOIN sys.columns as c
 		ON t.[object_id] = c.[object_id]
-	INNER JOIN sys.indexes as i
-		ON t.[object_id] = i.[object_id]
-		AND i.is_primary_key = 1
-	INNER JOIN sys.index_columns as ic
-		ON t.[object_id] = ic.[object_id]
-		AND i.[index_id] = ic.[index_id]
-		AND c.[column_id] = ic.[column_id]
 	WHERE t.[object_id] = @table_object_id
-	ORDER BY ic.index_column_id
+	AND c.is_computed = 0
+	AND NOT EXISTS (
+		SELECT TOP 1 1 as is_part_of_pk
+		FROM sys.indexes as i
+		INNER JOIN sys.index_columns as ic
+			ON i.[object_id] = ic.[object_id]
+			AND i.[index_id] = ic.[index_id]
+		WHERE i.is_primary_key = 1
+		AND t.[object_id] = i.[object_id]
+		AND c.column_id = ic.column_id
+	)
+) as x
+ORDER BY [rn]
 
+SELECT @insert_columns +=
+	-- Any column that is not caclculated or otherwise automatically renderered (such as an identity column)
+	-- should be included in the insert
+	CASE rn WHEN 1 THEN ' ' ELSE @cr END 
+	+ @tab + @tab 
+	+ CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
+FROM (
 	SELECT 
-		  @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
-		, @join_predicate_d = REPLACE(@join_predicate, '= i.[', '= t.[')
+		  c.[name] as [column_name]
+		, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
+	FROM sys.schemas as s
+	INNER JOIN sys.tables as t
+		ON s.[schema_id] = t.[schema_id]
+	INNER JOIN sys.columns as c
+		ON t.[object_id] = c.[object_id]
+	WHERE t.[object_id] = @table_object_id
+	AND c.is_computed = 0
+	AND c.is_identity = 0
+) as x
+ORDER BY [rn]
 
-	-- set all columns not included in PK 
-	SELECT @set_columns +=
-		@cr + @tab + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + '] = i.[' + [column_name] + ']'
-	FROM (
-		SELECT 
-			  c.[name] as [column_name]
-			, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
-		FROM sys.schemas as s
-		INNER JOIN sys.tables as t
-			ON s.[schema_id] = t.[schema_id]
-		INNER JOIN sys.columns as c
-			ON t.[object_id] = c.[object_id]
-		WHERE t.[object_id] = @table_object_id
+-- join predicate needs to be based on pk 
+SELECT 
+	  @join_predicate +=
+		CASE WHEN ic.index_column_id = 1 THEN '' ELSE @cr + @tab END
+		+ @tab 
+		+ CASE WHEN ic.index_column_id = 1 THEN 'ON ' ELSE 'AND ' END + 'd.[' + c.[name] + '] = i.[' + c.[name] + '] '
+FROM sys.tables as t
+INNER JOIN sys.columns as c
+	ON t.[object_id] = c.[object_id]
+INNER JOIN sys.indexes as i
+	ON t.[object_id] = i.[object_id]
+	AND i.is_primary_key = 1
+INNER JOIN sys.index_columns as ic
+	ON t.[object_id] = ic.[object_id]
+	AND i.[index_id] = ic.[index_id]
+	AND c.[column_id] = ic.[column_id]
+WHERE t.[object_id] = @table_object_id
+ORDER BY ic.index_column_id
 
-		-- computed columns can't be updated. They should NOT be included
-		-- in the row_hash calc
-		AND c.is_computed = 0
+SELECT 
+	  @match_predicate = REPLACE(@join_predicate, 'ON d.[', 'WHERE d.[')
+	, @join_predicate_d = REPLACE(@join_predicate, '= i.[', '= t.[')
 
-		-- PK columns should not be included in the row_hash calc. They won't hurt
-		-- anything. Leave them out none-the-less. Adding them contributes nothing
-		-- while making the row_hash marginally more expensive to render.
-		AND NOT EXISTS (
-			SELECT TOP 1 1 as is_part_of_pk
-			FROM sys.indexes as i
-			INNER JOIN sys.index_columns as ic
-				ON i.[object_id] = ic.[object_id]
-				AND i.[index_id] = ic.[index_id]
-			WHERE i.is_primary_key = 1
-			AND t.[object_id] = i.[object_id]
-			AND c.column_id = ic.column_id
-		)
+-- set all columns not included in PK 
+SELECT @set_columns +=
+	@cr + @tab + @tab + CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + '] = i.[' + [column_name] + ']'
+FROM (
+	SELECT 
+		  c.[name] as [column_name]
+		, ROW_NUMBER() OVER (ORDER BY c.[column_id]) as rn
+	FROM sys.schemas as s
+	INNER JOIN sys.tables as t
+		ON s.[schema_id] = t.[schema_id]
+	INNER JOIN sys.columns as c
+		ON t.[object_id] = c.[object_id]
+	WHERE t.[object_id] = @table_object_id
 
-		-- Any columns that, as a matter of policy, are never to be 
-		-- included in the row_hash calc. 
-		-- Add/Remove to this list at your peril
-		AND c.[name] NOT IN ('created', 'modified')
-	) as x
-	ORDER BY [rn]
+	-- computed columns can't be updated. They should NOT be included
+	-- in the row_hash calc
+	AND c.is_computed = 0
+
+	-- PK columns should not be included in the row_hash calc. They won't hurt
+	-- anything. Leave them out none-the-less. Adding them contributes nothing
+	-- while making the row_hash marginally more expensive to render.
+	AND NOT EXISTS (
+		SELECT TOP 1 1 as is_part_of_pk
+		FROM sys.indexes as i
+		INNER JOIN sys.index_columns as ic
+			ON i.[object_id] = ic.[object_id]
+			AND i.[index_id] = ic.[index_id]
+		WHERE i.is_primary_key = 1
+		AND t.[object_id] = i.[object_id]
+		AND c.column_id = ic.column_id
+	)
+
+	-- Any columns that, as a matter of policy, are never to be 
+	-- included in the row_hash calc. 
+	-- Add/Remove to this list at your peril
+	AND c.[name] NOT IN ('created', 'modified')
+) as x
+ORDER BY [rn]
 
 
-	SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @two_part_table_name)
-	SELECT @cmd = REPLACE(@cmd, '{{is_changed_predicate}}'	, @is_changed_predicate)
-	SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
-	SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
-	SELECT @cmd = REPLACE(@cmd, '{{set_columns}}'			, @set_columns)
-	SELECT @cmd = REPLACE(@cmd, '{{join_predicate}}'		, @join_predicate)
-	SELECT @cmd = REPLACE(@cmd, '{{join_predicate_d}}'		, @join_predicate_d)
-	SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
+SELECT @cmd = REPLACE(@cmd, '{{table_name}}'			, @two_part_table_name)
+SELECT @cmd = REPLACE(@cmd, '{{is_changed_predicate}}'	, @is_changed_predicate)
+SELECT @cmd = REPLACE(@cmd, '{{trigger_name}}'			, @trigger_name)
+SELECT @cmd = REPLACE(@cmd, '{{insert_columns}}'		, @insert_columns)
+SELECT @cmd = REPLACE(@cmd, '{{set_columns}}'			, @set_columns)
+SELECT @cmd = REPLACE(@cmd, '{{join_predicate}}'		, @join_predicate)
+SELECT @cmd = REPLACE(@cmd, '{{join_predicate_d}}'		, @join_predicate_d)
+SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
 
-print @join_predicate
-print @join_predicate_d
+--print @join_predicate
+--print @join_predicate_d
 	PRINT @cmd
-END
+
 
 
 /*
