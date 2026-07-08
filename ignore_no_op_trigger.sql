@@ -272,12 +272,12 @@ FROM (
 	WHERE t.[object_id] = @table_object_id
 
 	-- computed columns can't be updated. They should NOT be included
-	-- in the row_hash calc
+	-- in the compound predicate
 	AND c.is_computed = 0
 
-	-- PK columns should not be included in the row_hash calc. They won't hurt
+	-- PK columns should not be included in the compound predicate. They wouldn't hurt
 	-- anything. Leave them out none-the-less. Adding them contributes nothing
-	-- while making the row_hash marginally more expensive to render.
+	-- while making the compound predicate marginally more expensive.
 	AND NOT EXISTS (
 		SELECT TOP 1 1 as is_part_of_pk
 		FROM sys.indexes as i
@@ -308,17 +308,18 @@ SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
 
 --print @join_predicate
 --print @join_predicate_d
-	PRINT @cmd
+PRINT @cmd
 
 -------------------------------------------------------------------------------------------
 -- THIS is the END of the script that you run. Don't have any of the text below selected
--- when you execute this script. What follows is the description of a scenario where
--- this could be used.
+-- when you execute this script. What follows is a hypothetical scenario where this
+-- could be used.
 
 /*
--- setting the table_name parameter and running this script will produce a script that will create
--- an INSTEAD OF trigger your table in the way described. Here is a sample of the result of running 
--- this script against a table with this design:
+-- setting the top table_name parameter to '[dbo].[note]' and running this script will produce a 
+-- script that will create an INSTEAD OF trigger your table in the way described. Here is a
+-- sample of the result of running this script against a table with this design:
+--
 	CREATE TABLE [dbo].[note](
 		  [note_id] [int] IDENTITY(1,1) NOT NULL PRIMARY KEY 
 		, [object_id] [int] NULL 
