@@ -50,7 +50,7 @@
 
 		This is a very simple command and might be the most likely approach that a developer would take to make sure that 
 		the rows in the [customer] table follow the rule. However, everytime this command is executed, every row in the
-		table will be physically updated despite the fact that almost all of the rows require no change.
+		table will be physically updated despite the fact that almost all of them already contain the desired values.
 
 		Clearly, the command could be altered with a predicate that would limit the number of rows updated. That's 
 		not really the point of this scenario--let's stay focused. But it *is* good to bring that up. Not all of the hands
