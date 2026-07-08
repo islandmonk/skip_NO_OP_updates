@@ -16,12 +16,14 @@ OR mc.[field2] <> tc.[field2]
 
 This command will compare every match and filter out only those who will see meaningful change and updates those rows only. I don't want to touch any rows unnecessarily--the perenial task of ETL developers. 
 No trivial updates will be executed (by trivial update, I mean an update to a row that changes *none* of the fields in that row).
-The rows without changes remain as they were, unmolested. 
-Unmolested is a good word to use here because updating a row while not impacting values comes at an unnecessary cost. In ram and at the disk, an update to a row physically deletes the row with the old values and inserts a new row with the new values. 
-If we're not changing anything, then a trivial update is still causing churn in ram and on disk. Giving a table a way to ignore trivial updates automatically would be a big win for many scenarios. 
+The rows without changes remain as they were, oblivious to the operation. 
+Updating a row while not impacting values comes at an unnecessary cost. In ram and at the disk, an update to a row physically deletes the row with the old values and inserts a new row with the new values. 
+If we're not changing anything, then a trivial (no-op) update is still causing churn in ram and on disk. Giving a table a way to ignore no-op updates automatically would be a big win for many scenarios. 
 
-Now, let's just say that some ham-fisted developer makes an update through some client or in a procedure change that does something similar to a large table but doesn't include any measures to ignore rows not getting a 'real' update. 
-Is there something that I can do to the table to make it act as if it knows to pass on trivial updates?
+Now, let's just say that some ham-fisted developer makes an update through some client or in a procedure change that does something similar to a large table but doesn't include any measures to ignore rows that 
+are not-meaningfully-updated. 
+
+Is there something that I can do to the table to make it act as if it knows to pass on no-op updates?
 
 
 
