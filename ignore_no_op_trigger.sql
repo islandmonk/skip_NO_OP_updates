@@ -28,8 +28,11 @@
 	Costs of this approach
 		The method used by this approach is for a table to fire an INSTEAD OF trigger for crud opperations. 
 		The trigger makes it such that all CRUD all behaves as expected except for UPDATES. For updates, 
-		if an update were to leave a row unchanged, it is simply skipped. Each row of
-		the table necessarily has some sort of hash/checksum rendered and persisted.
+		if an update were to leave a row unchanged, it is simply skipped. The cost of knowing if a row is changed
+		or not is a compound predicate acting as gatekeeper to the UPDATE operation. The approach used here uses
+		IS DISTINCT FROM for each non-key column irrespective of its NULLability. This at least keeps the
+		trigger less sensitive to NULLability changes in its schema. Wnenever the table's schema changes otherwise,
+		it will be necessary to rerun this script to produce the *new* INSTEAD OF UPDATE trigger.
 
 	Why is this worthwhile?
 		In every database that I've created, the datamart/warehouse-ish sorts of operations that keep rollups 
