@@ -31,8 +31,8 @@
 		if an update were to leave a row unchanged, it is simply skipped. The cost of knowing if a row is changed
 		or not is a compound predicate acting as gatekeeper to the UPDATE operation. The approach used here uses
 		IS DISTINCT FROM for each non-key column irrespective of its NULLability. This at least keeps the
-		trigger less sensitive to NULLability changes in its schema. Wnenever the table's schema changes otherwise,
-		it will be necessary to rerun this script to produce the *new* INSTEAD OF UPDATE trigger.
+		trigger less sensitive to NULLability changes in its schema. Wnenever the table's schema otherwise changes,
+		it will be necessary to rerun this script to produce a revised INSTEAD OF UPDATE trigger.
 
 	Why is this worthwhile?
 		In every database that I've created, the datamart/warehouse-ish sorts of operations that keep rollups 
