@@ -310,7 +310,10 @@ SELECT @cmd = REPLACE(@cmd, '{{match_predicate}}'		, @match_predicate)
 --print @join_predicate_d
 	PRINT @cmd
 
-
+-------------------------------------------------------------------------------------------
+-- THIS is the END of the script that you run. Don't have any of the text below selected
+-- when you execute this script. What follows is the description of a scenario where
+-- this could be used.
 
 /*
 -- setting the table_name parameter and running this script will produce a script that will create
