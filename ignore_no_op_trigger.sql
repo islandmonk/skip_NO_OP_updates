@@ -107,9 +107,10 @@ IF @table_object_id IS NULL
 BEGIN
 	SELECT @message = 'I''m Sorry Dave. I don''t think that that table ' + @table_name + ' exists.'
 	PRINT @message
+	RETURN
 END 
 
-ELSE IF NOT EXISTS (
+IF NOT EXISTS (
 	SELECT TOP 1 1
 	FROM sys.indexes as i
 	WHERE [object_id] = @table_object_id
@@ -118,10 +119,9 @@ ELSE IF NOT EXISTS (
 BEGIN
 	SELECT @message = 'I''m Sorry Dave. I don''t think that that table ' + @table_name + ' has a primary key. We really need one.'
 	PRINT @message
+	RETURN
 END
 
-ELSE 
-BEGIN
 	SELECT 
 		  @two_part_table_name = '[' + SCHEMA_NAME(t.[schema_id]) + '].[' + t.[name] + ']'
 		, @trigger_name = SCHEMA_NAME(t.schema_id) + '_' + t.[name] + '__instead_of_IUD'
