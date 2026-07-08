@@ -141,9 +141,9 @@ AS
 
 	This is the definition of an INSTEAD OF trigger. Its initial purpose is to reduce churn on tables
 	mostly for the sake of performance. There is nothing stopping you from altering this trigger to
-	add other functionality. Keep in mind, also, that you can have AFTER UPDATE triggers on the same
-	table as one with an INSTEAD OF UPDATE trigger. So that is still available to you even if you
-	go with this approach.
+	add other functionality. Important Note: you are allowed AFTER UPDATE triggers on the same
+	table as one with an INSTEAD OF UPDATE trigger. AFTER UPDATE business logic is still available 
+	to you even if you go with this approach.
 	*/
 
 	UPDATE d
@@ -151,7 +151,7 @@ AS
 	FROM {{table_name}} as d -- deleted
 	INNER JOIN inserted as i 
 	{{join_predicate}}
-	-- rows where there is no difference between inserted and deleted are ignored
+	-- rows having no distinction between inserted and deleted are ignored
 	{{is_changed_predicate}} 
 
 	-- Inserts proceed as usual
@@ -336,9 +336,9 @@ AS
 
 	This is the definition of an INSTEAD OF trigger. Its initial purpose is to reduce churn on tables
 	mostly for the sake of performance. There is nothing stopping you from altering this trigger to
-	add other functionality. Keep in mind, also, that you can have AFTER UPDATE triggers on the same
-	table as one with an INSTEAD OF UPDATE trigger. So that is still available to you even if you
-	go with this approach.
+	add other functionality. Important Note: you are allowed AFTER UPDATE triggers on the same 
+	table as one with an INSTEAD OF UPDATE trigger. AFTER UPDATE business logic is still available 
+	to you even if you go with this approach.
 	*/
 
 	UPDATE d
@@ -350,7 +350,7 @@ AS
 	FROM [dbo].[note] as d -- deleted
 	INNER JOIN inserted as i 
 		ON d.[note_id] = i.[note_id] 
-	-- rows where there is no difference between inserted and deleted are ignored
+	-- rows having no distinction between inserted and deleted are ignored
 	
 	WHERE i.[object_id] IS DISTINCT FROM d.[object_id] 
 	OR i.[column_id] IS DISTINCT FROM d.[column_id] 
