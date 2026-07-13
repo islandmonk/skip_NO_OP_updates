@@ -343,7 +343,7 @@ AS
 
 	This is the definition of an INSTEAD OF trigger. Its initial purpose is to reduce churn on tables
 	mostly for the sake of performance. There is nothing stopping you from altering this trigger to
-	add other functionality. Important Note: you are allowed AFTER UPDATE triggers on the same 
+	add other functionality. Important Note: you are allowed AFTER UPDATE triggers on the same
 	table as one with an INSTEAD OF UPDATE trigger. AFTER UPDATE business logic is still available 
 	to you even if you go with this approach.
 	*/
