@@ -6,13 +6,14 @@
 	application performance, schema modeling, naming, code generation, whatever. I'd like to share these tricks with whoever 
 	might find them beneficial. I wouldn't mind feedback / suggestions either. 
 
-	This script produces a script. The machine-generated script can be executed to modify the table of your choice 
-	turning it into an UPDATE-ONLY-IF-CHANGED table. Obviously, the script could be modified to affect an 
-	array of tables all at once. I don't really recommend that.
+	This script produces a script. The resulting machine-generated script can be executed to modify the table of your choice 
+	turning it into an UPDATE-ONLY-IF-CHANGED table. Obviously, the script could be modified to affect an array of tables all 
+	at once. I don't really recommend that.
+
 	The trigger produced by this script is INSTEAD OF INSERT, UPDATE, DELETE
 
 	The reason that it is for all operations is that if the table encounters a MERGE command where INSERTs and DELETEs
-	might be happening with the updates, there needs to be an INSTEAD OF INSERT and INSTEAD OF DELETE for the table
+	might be happening with the UPDATEs, there needs to be an INSTEAD OF INSERT and INSTEAD OF DELETE for the table
 	as well. So this trigger does everything. If the table doesn't need to anticipate MERGE operations, all but the
 	update parts of the trigger can be removed.
 
@@ -27,12 +28,13 @@
 
 	Costs of this approach
 		The method used by this approach is for a table to fire an INSTEAD OF trigger for crud opperations. 
-		The trigger makes it such that all CRUD all behaves as expected except for UPDATES. For updates, 
+		The trigger makes it such that all CRUD all behaves as expected except for UPDATEs. For updates, 
 		if an update were to leave a row unchanged, it is simply skipped. The cost of knowing if a row is changed
 		or not is a compound predicate acting as gatekeeper to the UPDATE operation. The approach used here uses
 		IS DISTINCT FROM for each non-key column irrespective of its NULLability. This at least keeps the
-		trigger less sensitive to NULLability changes in its schema. Wnenever the table's schema otherwise changes,
-		it will be necessary to rerun this script to produce a revised INSTEAD OF UPDATE trigger.
+		trigger less sensitive to NULLability and data type changes in its schema. Wnenever the table's schema *does*
+		otherwise change, it will be necessary to rerun this script to produce a revised INSTEAD OF UPDATE trigger.
+		This revised script must then be executed against the database containing the table.
 
 	Why is this worthwhile?
 		In every database that I've created, the datamart/warehouse-ish sorts of operations that keep rollups 
@@ -77,7 +79,7 @@
 		An INSTEAD OF trigger needs to be present for all of those operations if you wish to have INSTEAD OF behaviors for any 
 		of them. It would be nice if a merge invoked the INSTEAD OF	UPDATE only for updates and just behaved as normal for the 
 		inserts and deletes. But, if a table has an INSTEAD OF trigger defined for *any* operation that occurs in a MERGE, the MERGE 
-		will fail unless the table also has an INSTEAD OF trigger for *all* operations.
+		will fail unless the table also has an INSTEAD OF trigger for *all* operations. I'm repeating myself here. Unnecessarily?
 
 		The insert and delete portions of the INSTEAD OF trigger created below just make sure that inserts
 		and deletes occur exactly as before. 
@@ -215,7 +217,8 @@ ORDER BY [rn]
 
 SELECT @insert_columns +=
 	-- Any column that is not caclculated or otherwise automatically renderered (such as an identity column)
-	-- should be included in the insert
+	-- should be included in the insert. That might sound confusing. Absolutely *DO* include the identity
+	-- column
 	CASE rn WHEN 1 THEN ' ' ELSE @cr END 
 	+ @tab + @tab 
 	+ CASE rn WHEN 1 THEN '  ' ELSE ', ' END + '[' + [column_name] + ']' 
@@ -316,11 +319,11 @@ PRINT @cmd
 -- could be used.
 
 /*
--- setting the top table_name parameter to '[dbo].[note]' and running this script will produce a 
--- script that will create an INSTEAD OF trigger your table in the way described. Here is a
+-- setting the top @table_name parameter to '[dbo].[note]' and running the above script will 
+-- produce a script that will create an INSTEAD OF trigger your table in the way described. Here is a
 -- sample of the result of running this script against a table with this design:
 --
-	CREATE TABLE [dbo].[note](
+	CREATE TABLE [dbo].[note] (
 		  [note_id] [int] IDENTITY(1,1) NOT NULL PRIMARY KEY 
 		, [object_id] [int] NULL 
 		, [column_id] [int] NULL 
