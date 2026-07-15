@@ -292,9 +292,11 @@ FROM (
 		AND c.column_id = ic.column_id
 	)
 
-	-- Any columns that, as a matter of policy, are never to be 
-	-- included in the row_hash calc. 
-	-- Add/Remove to this list at your peril
+	-- Any columns that, for whatever reason, are never to be 
+	-- included in the IS_CHANGED predicate. 
+	-- WARNING: Add/Remove to this list at your peril.
+	--  		Innappropriately ignoring a changed field is not in
+	-- 			the top ten list of Best Practices.
 	AND c.[name] NOT IN ('created', 'modified')
 ) as x
 ORDER BY [rn]
