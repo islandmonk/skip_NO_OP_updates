@@ -113,7 +113,7 @@ BEGIN
 END 
 
 IF NOT EXISTS (
-	SELECT TOP 1 1
+	SELECT 1
 	FROM sys.indexes as i
 	WHERE [object_id] = @table_object_id
 	AND i.is_primary_key = 1
@@ -168,7 +168,7 @@ AS
 {{insert_columns}}
 	FROM inserted as i
 	WHERE NOT EXISTS (
-		SELECT TOP 1 1
+		SELECT 1
 		FROM deleted as d
 	{{match_predicate}}	
 	)
@@ -180,7 +180,7 @@ AS
 	INNER JOIN deleted as d
 	{{join_predicate_d}}
 	WHERE NOT EXISTS (
-		SELECT TOP 1 1
+		SELECT 1
 		FROM inserted as i
 	{{match_predicate}}	
 	)
@@ -203,7 +203,7 @@ FROM (
 	WHERE t.[object_id] = @table_object_id
 	AND c.is_computed = 0
 	AND NOT EXISTS (
-		SELECT TOP 1 1 as is_part_of_pk
+		SELECT 1 as is_part_of_pk
 		FROM sys.indexes as i
 		INNER JOIN sys.index_columns as ic
 			ON i.[object_id] = ic.[object_id]
@@ -282,7 +282,7 @@ FROM (
 	-- anything. Leave them out none-the-less. Adding them contributes nothing
 	-- while making the compound predicate marginally more expensive.
 	AND NOT EXISTS (
-		SELECT TOP 1 1 as is_part_of_pk
+		SELECT 1 as is_part_of_pk
 		FROM sys.indexes as i
 		INNER JOIN sys.index_columns as ic
 			ON i.[object_id] = ic.[object_id]
@@ -387,7 +387,7 @@ AS
 		, [created]
 	FROM inserted as i
 	WHERE NOT EXISTS (
-		SELECT TOP 1 1
+		SELECT 1
 		FROM deleted as d
 		WHERE d.[note_id] = i.[note_id] 	
 	)
@@ -399,7 +399,7 @@ AS
 	INNER JOIN deleted as d
 		ON d.[note_id] = t.[note_id] 
 	WHERE NOT EXISTS (
-		SELECT TOP 1 1
+		SELECT 1
 		FROM inserted as i
 		WHERE d.[note_id] = i.[note_id] 	
 	)
