@@ -23,7 +23,7 @@
 		1)	Physical disk churn is reduced
 		2)	Fewer opportunities for index and data pages to become split/fragmented
 		3)	This approach would be a good first step toward making a table behave like a slowly
-			changing dimension. With time-machine capabilities!
+			changing dimension. With time-travel capabilities!
 		4)	Extends SSD physical life
 
 	Costs of this approach
