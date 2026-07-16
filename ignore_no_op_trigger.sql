@@ -296,7 +296,7 @@ FROM (
 	-- included in the IS_CHANGED predicate. 
 	-- WARNING: Add/Remove to this list at your peril.
 	--  		Innappropriately ignoring a changed field is not in
-	-- 			the top ten list of Best Practices.
+	-- 			the data industry's top ten list of Best Practices.
 	AND c.[name] NOT IN ('created', 'modified')
 ) as x
 ORDER BY [rn]
